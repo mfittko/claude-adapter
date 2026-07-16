@@ -122,16 +122,17 @@ describe('Makora compatibility', () => {
             opus: 'zai-org/GLM-5.2-FP8',
             sonnet: 'zai-org/GLM-5.2-NVFP4',
             haiku: 'zai-org/GLM-5.2-FP8',
-        }, {});
+        }, { ANTHROPIC_MODEL: 'stale-model' });
         expect(glm.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('zai-org/GLM-5.2-FP8[1m]');
         expect(glm.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('zai-org/GLM-5.2-NVFP4[1m]');
         expect(glm.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('zai-org/GLM-5.2-FP8');
+        expect(glm.ANTHROPIC_MODEL).toBeUndefined();
 
         const deepSeek = buildMakoraChildEnv('http://127.0.0.1:3080', 'local-key', {
             opus: 'deepseek-ai/DeepSeek-V4-Flash',
             sonnet: 'deepseek-ai/DeepSeek-V4-Pro',
             haiku: 'moonshotai/Kimi-K2.7-Code',
-        }, {});
+        }, { ANTHROPIC_MODEL: 'stale-model' });
         expect(deepSeek.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('deepseek-ai/DeepSeek-V4-Flash[1m]');
         expect(deepSeek.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('deepseek-ai/DeepSeek-V4-Pro[1m]');
         expect(deepSeek.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('moonshotai/Kimi-K2.7-Code');
@@ -142,7 +143,7 @@ describe('Makora compatibility', () => {
             opus: 'meta-llama/Llama-3.3-70B-Instruct',
             sonnet: 'unsloth/Qwen3.6-27B-NVFP4',
             haiku: 'google/gemma-4-26B-A4B',
-        }, {});
+        }, { ANTHROPIC_MODEL: 'stale-model' });
         expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('meta-llama/Llama-3.3-70B-Instruct');
         expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('unsloth/Qwen3.6-27B-NVFP4');
         expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('google/gemma-4-26B-A4B');

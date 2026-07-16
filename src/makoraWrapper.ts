@@ -43,6 +43,7 @@ export function buildMakoraChildEnv(
     const childEnv = { ...sourceEnv };
     delete childEnv.MAKORA_OPTIMIZE_TOKEN;
     delete childEnv.ANTHROPIC_API_KEY;
+    delete childEnv.ANTHROPIC_MODEL;
     return {
         ...childEnv,
         ANTHROPIC_BASE_URL: proxyUrl,
