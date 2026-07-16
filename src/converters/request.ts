@@ -52,7 +52,8 @@ export function convertRequestToOpenAI(
     toolFormat: 'native' | 'xml' = 'native',
     isAzureOpenAI = false,
     rebrandSystemPrompt = true,
-    includeReasoningHistory = false
+    includeReasoningHistory = false,
+    silentLogs = false
 ): OpenAIChatRequest {
     const messages: OpenAIMessage[] = [];
 
@@ -93,7 +94,7 @@ export function convertRequestToOpenAI(
     // Convert messages with shared deduplication context
     // Convert messages with shared deduplication context
     for (const msg of anthropicRequest.messages) {
-        const converted = convertMessage(msg, idDeduplication, toolFormat, includeReasoningHistory);
+        const converted = convertMessage(msg, idDeduplication, toolFormat, includeReasoningHistory, silentLogs);
         messages.push(...converted);
     }
 
@@ -199,7 +200,8 @@ function convertMessage(
     msg: AnthropicMessage,
     ctx: IdDeduplicationContext,
     toolFormat: 'native' | 'xml',
-    includeReasoningHistory: boolean
+    includeReasoningHistory: boolean,
+    silentLogs: boolean
 ): OpenAIMessage[] {
     const result: OpenAIMessage[] = [];
 
@@ -276,7 +278,7 @@ function convertMessage(
             // Assistant message with content blocks
             // Note: We still use processAssistantContentBlocks for deduplication logic, 
             // even if we don't use the tool_calls output in XML mode (to keep state consistent)
-            const { textContent, reasoning, toolCalls } = processAssistantContentBlocks(msg.content, ctx);
+            const { textContent, reasoning, toolCalls } = processAssistantContentBlocks(msg.content, ctx, silentLogs);
 
             // Skip assistant prefill messages when content is just a JSON starter
             if (toolCalls.length === 0 && textContent && isAssistantPrefill(textContent)) {
@@ -396,7 +398,8 @@ function convertImageBlock(block: AnthropicImageBlock): OpenAIUserContentPart {
  */
 function processAssistantContentBlocks(
     blocks: AnthropicContentBlock[],
-    ctx: IdDeduplicationContext
+    ctx: IdDeduplicationContext,
+    silentLogs: boolean
 ): {
     textContent: string;
     reasoning: string;
@@ -434,7 +437,7 @@ function processAssistantContentBlocks(
                         idToUse += chars.charAt(Math.floor(Math.random() * chars.length));
                     }
                 }
-                console.log(`[adapter] Repair ID: ${toolUse.id} → ${idToUse}`);
+                                if (!silentLogs) console.log(`[adapter] Repair ID: ${toolUse.id} → ${idToUse}`);
             }
             ctx.seenIds.add(idToUse);
 

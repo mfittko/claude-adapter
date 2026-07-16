@@ -84,7 +84,9 @@ export function createServer(config: AdapterConfig): ProxyServer {
             let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
             const forceShutdown = new Promise<void>((resolve) => {
                 timeoutHandle = setTimeout(() => {
-                    logger.warn('Graceful shutdown timeout exceeded, closing active connections');
+                    if (config.mode !== 'makora') {
+                        logger.warn('Graceful shutdown timeout exceeded, closing active connections');
+                    }
                     app.server.closeAllConnections?.();
                     resolve();
                 }, timeout);

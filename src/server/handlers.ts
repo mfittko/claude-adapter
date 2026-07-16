@@ -41,7 +41,7 @@ export function createMessagesHandler(config: AdapterConfig) {
 
     return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
         const requestId = generateRequestId();
-        const log = logger.withRequestId(requestId);
+        const log = logger.withRequestId(requestId, config.mode === 'makora');
 
         // Add request ID to response headers for client tracing
         reply.header('X-Request-Id', requestId);
@@ -73,6 +73,7 @@ export function createMessagesHandler(config: AdapterConfig) {
                 toolStyle,
                 isAzure,
                 config.mode !== 'makora',
+                config.mode === 'makora',
                 config.mode === 'makora'
             );
             const makoraPolicy = config.mode === 'makora'

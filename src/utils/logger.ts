@@ -109,8 +109,8 @@ class Logger {
   /**
    * Create a child logger with request context
    */
-  withRequestId(requestId: string): RequestLogger {
-    return new RequestLogger(this, requestId);
+  withRequestId(requestId: string, silent = false): RequestLogger {
+    return new RequestLogger(this, requestId, silent);
   }
 }
 
@@ -120,10 +120,12 @@ class Logger {
 class RequestLogger {
   private parent: Logger;
   private requestId: string;
+  private silent: boolean;
 
-  constructor(parent: Logger, requestId: string) {
+  constructor(parent: Logger, requestId: string, silent = false) {
     this.parent = parent;
     this.requestId = requestId;
+    this.silent = silent;
   }
 
   private addContext(meta?: Record<string, unknown>): Record<string, unknown> {
@@ -131,22 +133,27 @@ class RequestLogger {
   }
 
   debug(message: string, meta?: Record<string, unknown>): void {
+    if (this.silent) return;
     this.parent.debug(message, this.addContext(meta));
   }
 
   info(message: string, meta?: Record<string, unknown>): void {
+    if (this.silent) return;
     this.parent.info(message, this.addContext(meta));
   }
 
   warn(message: string, meta?: Record<string, unknown>): void {
+    if (this.silent) return;
     this.parent.warn(message, this.addContext(meta));
   }
 
   error(message: string, error?: Error, meta?: Record<string, unknown>): void {
+    if (this.silent) return;
     this.parent.error(message, error, this.addContext(meta));
   }
 
   print(message: string): void {
+    if (this.silent) return;
     this.parent.print(message);
   }
 }
