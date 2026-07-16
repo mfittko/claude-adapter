@@ -2,3 +2,5 @@ version: 1
 gates:
   draft:
     requireCi: false
+  preApproval:
+    requireCi: false
