@@ -19,8 +19,13 @@ const DEFAULT_SHUTDOWN_TIMEOUT = 10000;
  */
 export function createServer(config: AdapterConfig): ProxyServer {
     const app = Fastify({ logger: false });
+    const isMakora = config.mode === 'makora';
 
-    if (config.localAuthToken) {
+    if (isMakora && !config.localAuthToken) {
+        throw new Error('Makora mode requires a local authentication token');
+    }
+
+    if (isMakora) {
         app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
             if (request.routeOptions.url === '/health') return;
             const authorization = request.headers.authorization;
@@ -38,6 +43,16 @@ export function createServer(config: AdapterConfig): ProxyServer {
                 });
             }
         });
+    } else {
+        app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+            reply.header('Access-Control-Allow-Origin', '*');
+            reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, anthropic-version, x-api-key');
+
+            if (request.method === 'OPTIONS') {
+                return reply.code(200).send();
+            }
+        });
     }
 
     // Health check endpoint
@@ -52,7 +67,11 @@ export function createServer(config: AdapterConfig): ProxyServer {
         app,
         start: async (port: number): Promise<string> => {
             try {
-                return await app.listen({ port, host: '127.0.0.1' });
+                const address = await app.listen({ port, host: isMakora ? '127.0.0.1' : '0.0.0.0' });
+                if (isMakora) return address;
+                const boundAddress = app.server.address();
+                const actualPort = typeof boundAddress === 'object' && boundAddress ? boundAddress.port : port;
+                return `http://localhost:${actualPort}`;
             } catch (err: any) {
                 if (err.code === 'EADDRINUSE') {
                     throw new Error(`Port ${port} is already in use. Try a different port.`);

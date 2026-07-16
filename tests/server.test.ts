@@ -28,6 +28,11 @@ const testConfig: AdapterConfig = {
         haiku: 'gpt-3.5-turbo',
     },
 };
+const makoraConfig: AdapterConfig = {
+    ...testConfig,
+    mode: 'makora',
+    localAuthToken: 'local-secret',
+};
 
 describe('Server', () => {
     describe('createServer', () => {
@@ -63,15 +68,24 @@ describe('Server', () => {
             expect(response.statusCode).toBe(400);
         });
 
-        it('should not expose wildcard CORS', async () => {
+        it('should preserve wildcard CORS and OPTIONS handling in generic mode', async () => {
             const server = createServer(testConfig);
-            const response = await server.app.inject({ method: 'GET', url: '/health' });
+            const getResponse = await server.app.inject({ method: 'GET', url: '/health' });
+            const optionsResponse = await server.app.inject({ method: 'OPTIONS', url: '/v1/messages' });
 
-            expect(response.headers['access-control-allow-origin']).toBeUndefined();
+            expect(getResponse.headers['access-control-allow-origin']).toBe('*');
+            expect(optionsResponse.statusCode).toBe(200);
+            expect(optionsResponse.headers['access-control-allow-methods']).toContain('POST');
+            expect(optionsResponse.headers['access-control-allow-headers']).toContain('Authorization');
         });
 
-        it('should enforce process-local bearer authentication when configured', async () => {
-            const server = createServer({ ...testConfig, localAuthToken: 'local-secret' });
+        it('should fail closed when Makora has no local authentication token', () => {
+            expect(() => createServer({ ...testConfig, mode: 'makora' }))
+                .toThrow('Makora mode requires a local authentication token');
+        });
+
+        it('should enforce process-local bearer authentication in Makora mode', async () => {
+            const server = createServer(makoraConfig);
             const unauthorized = await server.app.inject({
                 method: 'POST',
                 url: '/v1/messages',
@@ -94,15 +108,16 @@ describe('Server', () => {
             expect(authorized.statusCode).toBe(400);
         });
 
-        it('should leave the health check available without credentials', async () => {
-            const server = createServer({ ...testConfig, localAuthToken: 'local-secret' });
+        it('should leave the Makora health check available without credentials or CORS', async () => {
+            const server = createServer(makoraConfig);
             const response = await server.app.inject({ method: 'GET', url: '/health?ready=1' });
 
             expect(response.statusCode).toBe(200);
+            expect(response.headers['access-control-allow-origin']).toBeUndefined();
         });
 
-        it('should bind only to loopback', async () => {
-            const server = createServer(testConfig);
+        it('should bind Makora only to loopback', async () => {
+            const server = createServer(makoraConfig);
             const port = await findAvailablePort(0);
             try {
                 const url = await server.start(port);
@@ -114,13 +129,15 @@ describe('Server', () => {
             }
         });
 
-        it('should return the actual port when binding an ephemeral port', async () => {
+        it('should bind generic mode to all interfaces and return localhost with the actual port', async () => {
             const server = createServer(testConfig);
             try {
                 const url = await server.start(0);
                 const address = server.app.server.address();
-                expect(typeof address === 'object' && address?.port).toBeGreaterThan(0);
-                expect(url).toBe(`http://127.0.0.1:${typeof address === 'object' && address?.port}`);
+                const actualPort = typeof address === 'object' && address?.port;
+                expect(actualPort).toBeGreaterThan(0);
+                expect(typeof address === 'object' && address?.address).toBe('0.0.0.0');
+                expect(url).toBe(`http://localhost:${actualPort}`);
             } finally {
                 await server.stop();
             }
