@@ -85,6 +85,12 @@ describe('Server', () => {
             });
 
             expect(unauthorized.statusCode).toBe(401);
+            expect(unauthorized.json()).toEqual({
+                error: {
+                    type: 'authentication_error',
+                    message: 'Invalid local proxy authentication token',
+                },
+            });
             expect(authorized.statusCode).toBe(400);
         });
 

@@ -137,7 +137,7 @@ function processChunk(chunk: OpenAIStreamChunk, state: StreamingState, raw: any)
   if (reasoning) {
     let reasoningToSend = reasoning;
     if (state.guardNanCollapse) {
-      state.reasoningOnset = (state.reasoningOnset + reasoning).slice(0, 64);
+      state.reasoningOnset += reasoning;
       if (state.reasoningOnset.length < 40) {
         reasoningToSend = '';
       } else {

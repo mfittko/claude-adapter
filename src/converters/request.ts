@@ -378,7 +378,6 @@ function processUserContentBlocks(
                 content: toolResult.is_error ? `Error: ${content}` : content,
             });
         }
-        // Images would need special handling for vision models - not implemented here
     }
 
     return { userContent, toolResults };

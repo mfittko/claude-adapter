@@ -30,7 +30,7 @@ export function createServer(config: AdapterConfig): ProxyServer {
             const expected = Buffer.from(config.localAuthToken!);
             const actual = Buffer.from(typeof supplied === 'string' ? supplied : '');
             if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-                reply.code(401).send({
+                return reply.code(401).send({
                     error: {
                         type: 'authentication_error',
                         message: 'Invalid local proxy authentication token',

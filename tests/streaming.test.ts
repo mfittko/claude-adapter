@@ -595,6 +595,19 @@ describe('Streaming Converter', () => {
         .toBe('reasoning trace');
     });
 
+    it('preserves a first reasoning chunk longer than the collapse detection window', async () => {
+      const mockRaw = new MockRawResponse();
+      const reasoning = 'A valid reasoning trace that is deliberately longer than sixty-four characters.';
+      const stream = createMockStream([
+        { choices: [{ delta: { reasoning }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      ]);
+
+      await streamOpenAIToAnthropic(stream as any, { raw: mockRaw } as any, 'glm', 'makora', true);
+      const thinking = mockRaw.getEvents().find(e => e.data.delta?.type === 'thinking_delta');
+      expect(thinking?.data.delta.thinking).toBe(reasoning);
+    });
+
     it('surfaces GLM onset collapse as an Anthropic stream error', async () => {
       const mockRaw = new MockRawResponse();
       const stream = createMockStream([
