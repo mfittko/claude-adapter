@@ -1,5 +1,5 @@
 // Tests for server setup (no port binding)
-import { createServer } from '../src/server';
+import { createServer, findAvailablePort } from '../src/server';
 import { AdapterConfig } from '../src/types/config';
 
 // Mock logger
@@ -27,6 +27,11 @@ const testConfig: AdapterConfig = {
         sonnet: 'gpt-4',
         haiku: 'gpt-3.5-turbo',
     },
+};
+const makoraConfig: AdapterConfig = {
+    ...testConfig,
+    mode: 'makora',
+    localAuthToken: 'local-secret',
 };
 
 describe('Server', () => {
@@ -63,48 +68,79 @@ describe('Server', () => {
             expect(response.statusCode).toBe(400);
         });
 
-        it('should handle OPTIONS for CORS', async () => {
+        it('should preserve wildcard CORS and OPTIONS handling in generic mode', async () => {
             const server = createServer(testConfig);
-            const response = await server.app.inject({
-                method: 'OPTIONS',
-                url: '/v1/messages',
-            });
+            const getResponse = await server.app.inject({ method: 'GET', url: '/health' });
+            const optionsResponse = await server.app.inject({ method: 'OPTIONS', url: '/v1/messages' });
 
-            expect(response.statusCode).toBe(200);
-            expect(response.headers['access-control-allow-origin']).toBe('*');
-            expect(response.headers['access-control-allow-methods']).toContain('POST');
+            expect(getResponse.headers['access-control-allow-origin']).toBe('*');
+            expect(optionsResponse.statusCode).toBe(200);
+            expect(optionsResponse.headers['access-control-allow-methods']).toContain('POST');
+            expect(optionsResponse.headers['access-control-allow-headers']).toContain('Authorization');
         });
 
-        it('should set CORS headers on GET', async () => {
-            const server = createServer(testConfig);
-            const response = await server.app.inject({
-                method: 'GET',
-                url: '/health',
-            });
-
-            expect(response.headers['access-control-allow-origin']).toBe('*');
+        it('should fail closed when Makora has no local authentication token', () => {
+            expect(() => createServer({ ...testConfig, mode: 'makora' }))
+                .toThrow('Makora mode requires a local authentication token');
         });
 
-        it('should set CORS headers on POST', async () => {
-            const server = createServer(testConfig);
-            const response = await server.app.inject({
+        it('should enforce process-local bearer authentication in Makora mode', async () => {
+            const server = createServer(makoraConfig);
+            const unauthorized = await server.app.inject({
                 method: 'POST',
                 url: '/v1/messages',
                 payload: {},
             });
-
-            expect(response.headers['access-control-allow-origin']).toBe('*');
-        });
-
-        it('should include all CORS headers', async () => {
-            const server = createServer(testConfig);
-            const response = await server.app.inject({
-                method: 'OPTIONS',
+            const authorized = await server.app.inject({
+                method: 'POST',
                 url: '/v1/messages',
+                headers: { authorization: 'Bearer local-secret' },
+                payload: {},
             });
 
-            expect(response.headers['access-control-allow-headers']).toContain('Content-Type');
-            expect(response.headers['access-control-allow-headers']).toContain('Authorization');
+            expect(unauthorized.statusCode).toBe(401);
+            expect(unauthorized.json()).toEqual({
+                error: {
+                    type: 'authentication_error',
+                    message: 'Invalid local proxy authentication token',
+                },
+            });
+            expect(authorized.statusCode).toBe(400);
+        });
+
+        it('should leave the Makora health check available without credentials or CORS', async () => {
+            const server = createServer(makoraConfig);
+            const response = await server.app.inject({ method: 'GET', url: '/health?ready=1' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.headers['access-control-allow-origin']).toBeUndefined();
+        });
+
+        it('should bind Makora only to loopback', async () => {
+            const server = createServer(makoraConfig);
+            const port = await findAvailablePort(0);
+            try {
+                const url = await server.start(port);
+                const address = server.app.server.address();
+                expect(url).toBe(`http://127.0.0.1:${port}`);
+                expect(typeof address === 'object' && address?.address).toBe('127.0.0.1');
+            } finally {
+                await server.stop();
+            }
+        });
+
+        it('should bind generic mode to all interfaces and return localhost with the actual port', async () => {
+            const server = createServer(testConfig);
+            try {
+                const url = await server.start(0);
+                const address = server.app.server.address();
+                const actualPort = typeof address === 'object' && address?.port;
+                expect(actualPort).toBeGreaterThan(0);
+                expect(typeof address === 'object' && address?.address).toBe('0.0.0.0');
+                expect(url).toBe(`http://localhost:${actualPort}`);
+            } finally {
+                await server.stop();
+            }
         });
     });
 });

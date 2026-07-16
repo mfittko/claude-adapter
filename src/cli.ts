@@ -14,6 +14,7 @@ import { UI } from './utils/ui';
 import { checkForUpdates } from './utils/update';
 import { getMetadata } from './utils/metadata';
 import { version } from '../package.json';
+import { launchClaudeWithMakora } from './makoraWrapper';
 
 const program = new Command();
 
@@ -26,7 +27,35 @@ program
     .option('-p, --port <port>', 'Port to run the proxy server on', '3080')
     .option('-r, --reconfigure', 'Force reconfiguration even if config exists')
     .option('--no-claude-settings', 'Skip updating Claude Code settings files')
-    .action(async (options) => {
+    .option('--makora', 'Launch Claude Code through the Makora preset')
+    .option('--model <model>', 'Makora model used for all Claude aliases')
+    .option('--opus-model <model>', 'Makora model used for the Opus alias')
+    .option('--sonnet-model <model>', 'Makora model used for the Sonnet alias')
+    .option('--haiku-model <model>', 'Makora model used for the Haiku alias')
+    .option('--claude-command <path>', 'Claude Code executable')
+    .argument('[claudeArgs...]', 'Arguments passed to Claude Code')
+    .action(async (claudeArgs: string[], options) => {
+        if (options.makora) {
+            try {
+                const exitCode = await launchClaudeWithMakora({
+                    port: parseInt(options.port, 10) || 3080,
+                    model: options.model,
+                    models: {
+                        opus: options.opusModel,
+                        sonnet: options.sonnetModel,
+                        haiku: options.haikuModel,
+                    },
+                    claudeCommand: options.claudeCommand,
+                    claudeArgs,
+                });
+                process.exitCode = exitCode;
+            } catch (error) {
+                UI.error('Makora launch failed', error as Error);
+                process.exitCode = 1;
+            }
+            return;
+        }
+
         UI.banner();
         UI.header('Adapt any model for Claude Code');
 

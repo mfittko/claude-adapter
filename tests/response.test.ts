@@ -202,6 +202,40 @@ describe('Response Converter', () => {
             expect(result.content[0].type).toBe('text');
             expect(result.content[1].type).toBe('tool_use');
         });
+
+        it('maps reasoning and reasoning_content to Anthropic thinking', () => {
+            const base: OpenAIChatResponse = {
+                id: 'reasoning', object: 'chat.completion', created: 1, model: 'makora',
+                choices: [{
+                    index: 0,
+                    message: { role: 'assistant', content: 'answer', reasoning_content: 'trace' },
+                    finish_reason: 'stop',
+                }],
+                usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+            };
+
+            const result = convertResponseToAnthropic(base, 'makora');
+            expect(result.content[0]).toEqual({ type: 'thinking', thinking: 'trace', signature: '' });
+            expect(result.content[1]).toEqual({ type: 'text', text: 'answer' });
+        });
+
+        it('normalizes empty tool arguments to an empty object', () => {
+            const response: OpenAIChatResponse = {
+                id: 'empty-tool', object: 'chat.completion', created: 1, model: 'makora',
+                choices: [{
+                    index: 0,
+                    message: {
+                        role: 'assistant', content: null,
+                        tool_calls: [{ id: 'call', type: 'function', function: { name: 'noop', arguments: '' } }],
+                    },
+                    finish_reason: 'tool_calls',
+                }],
+                usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            };
+
+            const result = convertResponseToAnthropic(response, 'makora');
+            expect((result.content[0] as any).input).toEqual({});
+        });
     });
 
     describe('createErrorResponse', () => {

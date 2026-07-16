@@ -14,7 +14,7 @@ jest.mock('../src/utils/fileStorage', () => {
     };
 });
 
-import { recordError, ErrorLogRecord } from '../src/utils/errorLog';
+import { recordError } from '../src/utils/errorLog';
 
 describe('Error Log Utilities', () => {
     beforeAll(() => {

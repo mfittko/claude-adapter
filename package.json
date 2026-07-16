@@ -12,7 +12,7 @@
     "start": "node dist/cli.js",
     "dev": "npx ts-node src/cli.ts",
     "test": "jest",
-    "lint": "eslint src/**/*.ts tests/**/*.ts",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src/**/*.ts tests/**/*.ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "prepublishOnly": "npm run build && npm test"
   },

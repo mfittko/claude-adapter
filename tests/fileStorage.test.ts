@@ -1,5 +1,5 @@
 // Tests for file storage utilities
-import { existsSync, mkdirSync, appendFileSync, rmSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 

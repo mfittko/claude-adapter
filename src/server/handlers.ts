@@ -12,6 +12,7 @@ import { validateAnthropicRequest, formatValidationErrors } from '../utils/valid
 import { logger, RequestLogger } from '../utils/logger';
 import { recordUsage } from '../utils/tokenUsage';
 import { recordError } from '../utils/errorLog';
+import { applyMakoraRequestPolicy, getMakoraModelPolicy } from '../makora';
 
 // Request ID counter for unique identification
 let requestIdCounter = 0;
@@ -28,14 +29,19 @@ function generateRequestId(): string {
  */
 export function createMessagesHandler(config: AdapterConfig) {
     const isAzure = isAzureOpenAIEndpoint(config.baseUrl);
-    const openai = new OpenAI({
-        baseURL: config.baseUrl,
-        apiKey: config.apiKey,
-    });
+    const clients = new Map<string, OpenAI>();
+    const getClient = (baseUrl: string): OpenAI => {
+        let client = clients.get(baseUrl);
+        if (!client) {
+            client = new OpenAI({ baseURL: baseUrl, apiKey: config.apiKey });
+            clients.set(baseUrl, client);
+        }
+        return client;
+    };
 
     return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
         const requestId = generateRequestId();
-        const log = logger.withRequestId(requestId);
+        const log = logger.withRequestId(requestId, config.mode === 'makora');
 
         // Add request ID to response headers for client tracing
         reply.header('X-Request-Id', requestId);
@@ -61,7 +67,23 @@ export function createMessagesHandler(config: AdapterConfig) {
             const toolStyle = config.toolFormat || 'native';
 
             // Convert request to OpenAI format
-            const openaiRequest = convertRequestToOpenAI(anthropicRequest, targetModel, toolStyle, isAzure);
+            let openaiRequest = convertRequestToOpenAI(
+                anthropicRequest,
+                targetModel,
+                toolStyle,
+                isAzure,
+                config.mode !== 'makora',
+                config.mode === 'makora',
+                config.mode === 'makora'
+            );
+            const makoraPolicy = config.mode === 'makora'
+                ? getMakoraModelPolicy(targetModel)
+                : undefined;
+            if (makoraPolicy) {
+                openaiRequest = applyMakoraRequestPolicy(openaiRequest, anthropicRequest, makoraPolicy);
+            }
+            const upstreamBaseUrl = makoraPolicy?.baseUrl ?? config.baseUrl;
+            const openai = getClient(upstreamBaseUrl);
 
             // Log tool calling mode when tools are present
             if (toolStyle === 'xml' && anthropicRequest.tools?.length) {
@@ -70,12 +92,20 @@ export function createMessagesHandler(config: AdapterConfig) {
 
             if (isStreaming) {
                 if (toolStyle === 'xml') {
-                    await handleXmlStreamingRequest(openai, openaiRequest, reply, anthropicRequest.model, config.baseUrl, log);
+                    await handleXmlStreamingRequest(openai, openaiRequest, reply, anthropicRequest.model, upstreamBaseUrl, log);
                 } else {
-                    await handleStreamingRequest(openai, openaiRequest, reply, anthropicRequest.model, config.baseUrl, log);
+                    await handleStreamingRequest(
+                        openai,
+                        openaiRequest,
+                        reply,
+                        anthropicRequest.model,
+                        upstreamBaseUrl,
+                        log,
+                        makoraPolicy?.guardedForNanCollapse ?? false
+                    );
                 }
             } else {
-                await handleNonStreamingRequest(openai, openaiRequest, reply, anthropicRequest.model, config.baseUrl, log);
+                await handleNonStreamingRequest(openai, openaiRequest, reply, anthropicRequest.model, upstreamBaseUrl, log);
             }
 
             log.info(`← ${targetModel} [received]`);
@@ -140,7 +170,8 @@ async function handleStreamingRequest(
     reply: FastifyReply,
     originalModel: string,
     provider: string,
-    log: RequestLogger
+    log: RequestLogger,
+    guardNanCollapse = false
 ): Promise<void> {
     log.debug('Making streaming request');
 
@@ -149,7 +180,13 @@ async function handleStreamingRequest(
         stream: true,
     } as OpenAI.ChatCompletionCreateParamsStreaming);
 
-    await streamOpenAIToAnthropic(stream as any, reply, originalModel, provider);
+    await streamOpenAIToAnthropic(
+        stream as any,
+        reply,
+        originalModel,
+        provider,
+        guardNanCollapse
+    );
     log.debug('Streaming completed');
 }
 

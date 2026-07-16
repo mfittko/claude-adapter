@@ -15,6 +15,10 @@ export interface AnthropicMessageRequest {
     metadata?: {
         user_id?: string;
     };
+    thinking?: {
+        type: 'enabled' | 'disabled' | 'adaptive';
+        budget_tokens?: number;
+    };
 }
 
 export interface AnthropicMessage {
@@ -30,12 +34,30 @@ export interface AnthropicSystemContent {
     };
 }
 
-// Content blocks in responses
-export type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
+// Content blocks in requests and responses
+export type AnthropicContentBlock =
+    | AnthropicTextBlock
+    | AnthropicThinkingBlock
+    | AnthropicImageBlock
+    | AnthropicToolUseBlock
+    | AnthropicToolResultBlock;
 
 export interface AnthropicTextBlock {
     type: 'text';
     text: string;
+}
+
+export interface AnthropicThinkingBlock {
+    type: 'thinking';
+    thinking: string;
+    signature?: string;
+}
+
+export interface AnthropicImageBlock {
+    type: 'image';
+    source:
+        | { type: 'base64'; media_type: string; data: string }
+        | { type: 'url'; url: string };
 }
 
 export interface AnthropicToolUseBlock {
@@ -112,12 +134,17 @@ export interface AnthropicContentBlockStartEvent {
 export interface AnthropicContentBlockDeltaEvent {
     type: 'content_block_delta';
     index: number;
-    delta: AnthropicTextDelta | AnthropicInputJsonDelta;
+    delta: AnthropicTextDelta | AnthropicThinkingDelta | AnthropicInputJsonDelta;
 }
 
 export interface AnthropicTextDelta {
     type: 'text_delta';
     text: string;
+}
+
+export interface AnthropicThinkingDelta {
+    type: 'thinking_delta';
+    thinking: string;
 }
 
 export interface AnthropicInputJsonDelta {

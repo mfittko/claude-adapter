@@ -1,6 +1,4 @@
 // Request validation utilities
-import { AnthropicMessageRequest, AnthropicMessage, AnthropicContentBlock } from '../types/anthropic';
-
 export interface ValidationError {
     field: string;
     message: string;

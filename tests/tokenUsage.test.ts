@@ -14,7 +14,7 @@ jest.mock('../src/utils/fileStorage', () => {
     };
 });
 
-import { recordUsage, TokenUsageRecord } from '../src/utils/tokenUsage';
+import { recordUsage } from '../src/utils/tokenUsage';
 
 describe('Token Usage Utilities', () => {
     beforeAll(() => {

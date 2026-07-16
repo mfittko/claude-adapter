@@ -906,4 +906,57 @@ describe('Request Converter', () => {
             expect(content).toContain('</tool_code>');
         });
     });
+
+    describe('Makora-safe conversion', () => {
+        it('converts Anthropic base64 and URL image blocks', () => {
+            const anthropicRequest: AnthropicMessageRequest = {
+                model: 'moonshotai/Kimi-K2.7-Code',
+                max_tokens: 1024,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'Inspect images' },
+                        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'YWJj' } },
+                        { type: 'image', source: { type: 'url', url: 'https://example.com/image.jpg' } },
+                    ],
+                }],
+            };
+
+            const result = convertRequestToOpenAI(anthropicRequest, anthropicRequest.model);
+            expect(result.messages[0].content).toEqual([
+                { type: 'text', text: 'Inspect images' },
+                { type: 'image_url', image_url: { url: 'data:image/png;base64,YWJj' } },
+                { type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } },
+            ]);
+        });
+
+        it('does not send provider-specific reasoning fields in generic mode', () => {
+            const result = convertRequestToOpenAI({
+                model: 'strict-openai-model',
+                max_tokens: 100,
+                messages: [{
+                    role: 'assistant',
+                    content: [
+                        { type: 'thinking', thinking: 'private trace' },
+                        { type: 'text', text: 'answer' },
+                    ],
+                }],
+            }, 'strict-openai-model');
+
+            expect(result.messages[0]).toEqual({ role: 'assistant', content: 'answer' });
+            expect((result.messages[0] as any).reasoning).toBeUndefined();
+        });
+
+        it('can preserve the upstream Claude Code prompt unchanged', () => {
+            const system = "You are Claude Code, Anthropic's official CLI for Claude.";
+            const result = convertRequestToOpenAI({
+                model: 'makora-model',
+                max_tokens: 100,
+                system,
+                messages: [{ role: 'user', content: 'hello' }],
+            }, 'makora-model', 'native', false, false);
+
+            expect(result.messages[0].content).toBe(system);
+        });
+    });
 });

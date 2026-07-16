@@ -22,6 +22,15 @@ export function convertResponseToAnthropic(
     // Build content blocks
     const content: AnthropicContentBlock[] = [];
 
+    const reasoning = message.reasoning ?? message.reasoning_content;
+    if (reasoning) {
+        content.push({
+            type: 'thinking',
+            thinking: reasoning,
+            signature: '',
+        });
+    }
+
     // Add text content if present
     if (message.content) {
         content.push({
@@ -64,10 +73,15 @@ export function convertResponseToAnthropic(
  */
 function convertToolCallToToolUse(toolCall: OpenAIToolCall): AnthropicContentBlock {
     let input: Record<string, unknown>;
-    try {
-        input = JSON.parse(toolCall.function.arguments);
-    } catch {
-        input = { raw: toolCall.function.arguments };
+    const argumentsText = toolCall.function.arguments.trim();
+    if (!argumentsText) {
+        input = {};
+    } else {
+        try {
+            input = JSON.parse(argumentsText);
+        } catch {
+            input = { raw: toolCall.function.arguments };
+        }
     }
 
     return {

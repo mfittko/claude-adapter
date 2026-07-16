@@ -8,7 +8,20 @@ describe('CLI Options', () => {
         program
             .option('-p, --port <port>', 'Port', '3080')
             .option('-r, --reconfigure', 'Force reconfiguration')
-            .option('--no-claude-settings', 'Skip updating Claude Code settings');
+            .option('--no-claude-settings', 'Skip updating Claude Code settings')
+            .option('--claude-command <path>', 'Claude Code executable');
+    });
+
+    describe('--claude-command option', () => {
+        it('leaves the command undefined so the environment fallback can be used', () => {
+            program.parse(['node', 'test']);
+            expect(program.opts().claudeCommand).toBeUndefined();
+        });
+
+        it('uses an explicit command when provided', () => {
+            program.parse(['node', 'test', '--claude-command', '/usr/local/bin/claude']);
+            expect(program.opts().claudeCommand).toBe('/usr/local/bin/claude');
+        });
     });
 
     describe('--no-claude-settings flag', () => {
