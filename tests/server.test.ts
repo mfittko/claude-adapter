@@ -96,7 +96,7 @@ describe('Server', () => {
 
         it('should leave the health check available without credentials', async () => {
             const server = createServer({ ...testConfig, localAuthToken: 'local-secret' });
-            const response = await server.app.inject({ method: 'GET', url: '/health' });
+            const response = await server.app.inject({ method: 'GET', url: '/health?ready=1' });
 
             expect(response.statusCode).toBe(200);
         });
@@ -109,6 +109,18 @@ describe('Server', () => {
                 const address = server.app.server.address();
                 expect(url).toBe(`http://127.0.0.1:${port}`);
                 expect(typeof address === 'object' && address?.address).toBe('127.0.0.1');
+            } finally {
+                await server.stop();
+            }
+        });
+
+        it('should return the actual port when binding an ephemeral port', async () => {
+            const server = createServer(testConfig);
+            try {
+                const url = await server.start(0);
+                const address = server.app.server.address();
+                expect(typeof address === 'object' && address?.port).toBeGreaterThan(0);
+                expect(url).toBe(`http://127.0.0.1:${typeof address === 'object' && address?.port}`);
             } finally {
                 await server.stop();
             }

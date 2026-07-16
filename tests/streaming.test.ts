@@ -608,6 +608,29 @@ describe('Streaming Converter', () => {
       expect(thinking?.data.delta.thinking).toBe(reasoning);
     });
 
+    it('closes an open text block before flushing guarded reasoning', async () => {
+      const mockRaw = new MockRawResponse();
+      const stream = createMockStream([
+        { choices: [{ delta: { content: 'before' }, finish_reason: null }] },
+        { choices: [{ delta: { reasoning: 'short reasoning' }, finish_reason: null }] },
+        { choices: [{ delta: { content: 'after' }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      ]);
+
+      await streamOpenAIToAnthropic(stream as any, { raw: mockRaw } as any, 'glm', 'makora', true);
+      const blockEvents = mockRaw.getEvents().filter(e =>
+        e.event === 'content_block_start' || e.event === 'content_block_stop'
+      );
+      expect(blockEvents.map(e => [e.event, e.data.index, e.data.content_block?.type])).toEqual([
+        ['content_block_start', 0, 'text'],
+        ['content_block_stop', 0, undefined],
+        ['content_block_start', 1, 'thinking'],
+        ['content_block_stop', 1, undefined],
+        ['content_block_start', 2, 'text'],
+        ['content_block_stop', 2, undefined],
+      ]);
+    });
+
     it('surfaces GLM onset collapse as an Anthropic stream error', async () => {
       const mockRaw = new MockRawResponse();
       const stream = createMockStream([

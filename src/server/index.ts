@@ -22,7 +22,7 @@ export function createServer(config: AdapterConfig): ProxyServer {
 
     if (config.localAuthToken) {
         app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-            if (request.url === '/health') return;
+            if (request.routeOptions.url === '/health') return;
             const authorization = request.headers.authorization;
             const supplied = authorization?.startsWith('Bearer ')
                 ? authorization.slice('Bearer '.length)
@@ -52,9 +52,7 @@ export function createServer(config: AdapterConfig): ProxyServer {
         app,
         start: async (port: number): Promise<string> => {
             try {
-                await app.listen({ port, host: '127.0.0.1' });
-                const url = `http://127.0.0.1:${port}`;
-                return url;
+                return await app.listen({ port, host: '127.0.0.1' });
             } catch (err: any) {
                 if (err.code === 'EADDRINUSE') {
                     throw new Error(`Port ${port} is already in use. Try a different port.`);

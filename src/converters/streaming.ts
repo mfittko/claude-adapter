@@ -215,9 +215,16 @@ function processChunk(chunk: OpenAIStreamChunk, state: StreamingState, raw: any)
 
 function flushGuardedReasoning(state: StreamingState, raw: any): void {
   if (!state.guardNanCollapse || !state.reasoningOnset) return;
-  sendContentBlockStart(state.contentBlockIndex, 'thinking', '', raw);
+  if (state.textBlockOpen) {
+    sendContentBlockStop(state.contentBlockIndex, raw);
+    state.textBlockOpen = false;
+    state.contentBlockIndex++;
+  }
+  if (!state.thinkingBlockOpen) {
+    sendContentBlockStart(state.contentBlockIndex, 'thinking', '', raw);
+    state.thinkingBlockOpen = true;
+  }
   sendThinkingDelta(state.contentBlockIndex, state.reasoningOnset, raw);
-  state.thinkingBlockOpen = true;
   state.guardNanCollapse = false;
 }
 
