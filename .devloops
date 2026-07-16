@@ -1,0 +1,3 @@
+gates:
+  draft:
+    requireCi: false
