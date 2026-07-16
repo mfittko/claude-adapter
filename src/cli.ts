@@ -32,7 +32,7 @@ program
     .option('--opus-model <model>', 'Makora model used for the Opus alias')
     .option('--sonnet-model <model>', 'Makora model used for the Sonnet alias')
     .option('--haiku-model <model>', 'Makora model used for the Haiku alias')
-    .option('--claude-command <path>', 'Claude Code executable', 'claude')
+    .option('--claude-command <path>', 'Claude Code executable')
     .argument('[claudeArgs...]', 'Arguments passed to Claude Code')
     .action(async (claudeArgs: string[], options) => {
         if (options.makora) {

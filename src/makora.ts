@@ -47,7 +47,7 @@ export function getMakoraModelPolicy(model: string): MakoraModelPolicy {
     return {
         ...base,
         family: 'other',
-        ...(model === LLAMA_OVERRIDE ? { baseUrl: LLAMA_OVERRIDE_URL } : {}),
+        ...(normalized === LLAMA_OVERRIDE.toLowerCase() ? { baseUrl: LLAMA_OVERRIDE_URL } : {}),
     };
 }
 

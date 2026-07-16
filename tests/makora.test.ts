@@ -82,6 +82,8 @@ describe('Makora compatibility', () => {
     it('uses known per-model endpoint and guards only GLM family', () => {
         expect(getMakoraModelPolicy('amd/Llama-3.3-70B-Instruct-FP8-KV').baseUrl)
             .toBe('https://inference.makora.com/llama3-3-70b-instruct-fp8/v1');
+        expect(getMakoraModelPolicy('AMD/LLAMA-3.3-70B-INSTRUCT-FP8-KV').baseUrl)
+            .toBe('https://inference.makora.com/llama3-3-70b-instruct-fp8/v1');
         expect(getMakoraModelPolicy('zai-org/GLM-5.2-NVFP4').guardedForNanCollapse).toBe(true);
         expect(getMakoraModelPolicy('moonshotai/Kimi-K2.7-Code').guardedForNanCollapse).toBeUndefined();
     });
