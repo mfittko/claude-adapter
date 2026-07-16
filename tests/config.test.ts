@@ -1,5 +1,5 @@
 // Tests for configuration utilities
-import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -103,8 +103,10 @@ describe('Config Utilities', () => {
 
             saveConfig(config);
 
-            const content = readFileSync(join(ADAPTER_DIR, 'config.json'), 'utf-8');
+            const configPath = join(ADAPTER_DIR, 'config.json');
+            const content = readFileSync(configPath, 'utf-8');
             expect(JSON.parse(content)).toEqual(config);
+            expect(statSync(configPath).mode & 0o777).toBe(0o600);
         });
 
         it('should create directory if not exists', () => {
@@ -166,14 +168,12 @@ describe('Config Utilities', () => {
             expect(content.hasCompletedOnboarding).toBe(true);
         });
 
-        it('should handle corrupted file gracefully', () => {
+        it('should not overwrite a corrupted file', () => {
             const claudeJsonPath = join(TEST_DIR, '.claude.json');
             writeFileSync(claudeJsonPath, 'corrupted{json');
 
-            updateClaudeJson();
-
-            const content = JSON.parse(readFileSync(claudeJsonPath, 'utf-8'));
-            expect(content.hasCompletedOnboarding).toBe(true);
+            expect(() => updateClaudeJson()).toThrow('Refusing to overwrite invalid JSON');
+            expect(readFileSync(claudeJsonPath, 'utf-8')).toBe('corrupted{json');
         });
     });
 
@@ -191,6 +191,7 @@ describe('Config Utilities', () => {
             const content = JSON.parse(readFileSync(settingsPath, 'utf-8'));
             expect(content.env.ANTHROPIC_BASE_URL).toBe('http://localhost:3080');
             expect(content.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('gpt-4');
+            expect(statSync(settingsPath).mode & 0o777).toBe(0o600);
         });
 
         it('should preserve existing settings', () => {
@@ -210,16 +211,14 @@ describe('Config Utilities', () => {
             expect(content.env.ANTHROPIC_BASE_URL).toBe('http://localhost:3080');
         });
 
-        it('should handle corrupted file gracefully', () => {
+        it('should not overwrite corrupted settings', () => {
             const settingsPath = join(CLAUDE_DIR, 'settings.json');
             writeFileSync(settingsPath, 'not{valid}json');
 
-            updateClaudeSettings('http://test:8080', {
+            expect(() => updateClaudeSettings('http://test:8080', {
                 opus: 'x', sonnet: 'y', haiku: 'z'
-            });
-
-            const content = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-            expect(content.env.ANTHROPIC_BASE_URL).toBe('http://test:8080');
+            })).toThrow('Refusing to overwrite invalid JSON');
+            expect(readFileSync(settingsPath, 'utf-8')).toBe('not{valid}json');
         });
     });
 

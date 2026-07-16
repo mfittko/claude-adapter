@@ -6,6 +6,7 @@ import {
     AnthropicToolUseBlock,
     AnthropicToolResultBlock,
     AnthropicSystemContent,
+    AnthropicImageBlock,
 } from '../types/anthropic';
 import {
     OpenAIChatRequest,
@@ -49,7 +50,9 @@ export function convertRequestToOpenAI(
     anthropicRequest: AnthropicMessageRequest,
     targetModel: string,
     toolFormat: 'native' | 'xml' = 'native',
-    isAzureOpenAI = false
+    isAzureOpenAI = false,
+    rebrandSystemPrompt = true,
+    includeReasoningHistory = false
 ): OpenAIChatRequest {
     const messages: OpenAIMessage[] = [];
 
@@ -59,12 +62,11 @@ export function convertRequestToOpenAI(
             ? anthropicRequest.system
             : anthropicRequest.system.map((s: AnthropicSystemContent) => s.text).join('\n');
 
-        // Apply Claude Adapter branding if this is a Claude Code request
-        const modifiedSystemContent = modifySystemPromptForClaudeAdapter(systemContent);
-
         messages.push({
             role: 'system',
-            content: modifiedSystemContent,
+            content: rebrandSystemPrompt
+                ? modifySystemPromptForClaudeAdapter(systemContent)
+                : systemContent,
         });
     }
 
@@ -91,7 +93,7 @@ export function convertRequestToOpenAI(
     // Convert messages with shared deduplication context
     // Convert messages with shared deduplication context
     for (const msg of anthropicRequest.messages) {
-        const converted = convertMessage(msg, idDeduplication, toolFormat);
+        const converted = convertMessage(msg, idDeduplication, toolFormat, includeReasoningHistory);
         messages.push(...converted);
     }
 
@@ -196,7 +198,8 @@ interface IdDeduplicationContext {
 function convertMessage(
     msg: AnthropicMessage,
     ctx: IdDeduplicationContext,
-    toolFormat: 'native' | 'xml'
+    toolFormat: 'native' | 'xml',
+    includeReasoningHistory: boolean
 ): OpenAIMessage[] {
     const result: OpenAIMessage[] = [];
 
@@ -273,7 +276,7 @@ function convertMessage(
             // Assistant message with content blocks
             // Note: We still use processAssistantContentBlocks for deduplication logic, 
             // even if we don't use the tool_calls output in XML mode (to keep state consistent)
-            const { textContent, toolCalls } = processAssistantContentBlocks(msg.content, ctx);
+            const { textContent, reasoning, toolCalls } = processAssistantContentBlocks(msg.content, ctx);
 
             // Skip assistant prefill messages when content is just a JSON starter
             if (toolCalls.length === 0 && textContent && isAssistantPrefill(textContent)) {
@@ -305,6 +308,9 @@ function convertMessage(
                     content: textContent || null,
                 };
 
+                if (includeReasoningHistory && reasoning) {
+                    assistantMsg.reasoning = reasoning;
+                }
                 if (toolCalls.length > 0) {
                     (assistantMsg as any).tool_calls = toolCalls;
                 }
@@ -333,6 +339,8 @@ function processUserContentBlocks(
     for (const block of blocks) {
         if (block.type === 'text') {
             userContent.push({ type: 'text', text: block.text });
+        } else if (block.type === 'image') {
+            userContent.push(convertImageBlock(block as AnthropicImageBlock));
         } else if (block.type === 'tool_result') {
             const toolResult = block as AnthropicToolResultBlock;
             let content: string;
@@ -344,6 +352,11 @@ function processUserContentBlocks(
                     .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
                     .map(c => c.text)
                     .join('\n');
+                for (const nestedBlock of toolResult.content) {
+                    if (nestedBlock.type === 'image') {
+                        userContent.push(convertImageBlock(nestedBlock as AnthropicImageBlock));
+                    }
+                }
             } else {
                 content = '';
             }
@@ -371,6 +384,13 @@ function processUserContentBlocks(
     return { userContent, toolResults };
 }
 
+function convertImageBlock(block: AnthropicImageBlock): OpenAIUserContentPart {
+    const url = block.source.type === 'base64'
+        ? `data:${block.source.media_type};base64,${block.source.data}`
+        : block.source.url;
+    return { type: 'image_url', image_url: { url } };
+}
+
 /**
  * Process assistant content blocks, extracting text and tool calls
  * Deduplicates tool IDs to prevent errors with providers that reject duplicates
@@ -380,14 +400,18 @@ function processAssistantContentBlocks(
     ctx: IdDeduplicationContext
 ): {
     textContent: string;
+    reasoning: string;
     toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
 } {
     let textContent = '';
+    let reasoning = '';
     const toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = [];
 
     for (const block of blocks) {
         if (block.type === 'text') {
             textContent += block.text;
+        } else if (block.type === 'thinking') {
+            reasoning += block.thinking;
         } else if (block.type === 'tool_use') {
             const toolUse = block as AnthropicToolUseBlock;
             let idToUse = toolUse.id;
@@ -432,5 +456,5 @@ function processAssistantContentBlocks(
         }
     }
 
-    return { textContent, toolCalls };
+    return { textContent, reasoning, toolCalls };
 }

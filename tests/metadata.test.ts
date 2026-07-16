@@ -4,7 +4,6 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 const TEST_DIR = join(tmpdir(), 'claude-adapter-metadata-test-' + Date.now());
-const METADATA_FILE = join(TEST_DIR, 'metadata.json');
 
 // Mock the home directory to use test directory
 jest.mock('os', () => {

@@ -19,6 +19,8 @@ export interface OpenAIChatRequest {
     user?: string;
     tools?: OpenAITool[];
     tool_choice?: OpenAIToolChoice;
+    reasoning_effort?: string;
+    chat_template_kwargs?: Record<string, unknown>;
 }
 
 export type OpenAIMessage =
@@ -40,6 +42,8 @@ export interface OpenAIUserMessage {
 export interface OpenAIAssistantMessage {
     role: 'assistant';
     content: string | null;
+    reasoning?: string;
+    reasoning_content?: string;
     tool_calls?: OpenAIToolCall[];
 }
 
@@ -141,6 +145,8 @@ export interface OpenAIStreamChoice {
 export interface OpenAIStreamDelta {
     role?: 'assistant';
     content?: string;
+    reasoning?: string;
+    reasoning_content?: string;
     tool_calls?: OpenAIStreamToolCall[];
 }
 

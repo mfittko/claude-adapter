@@ -1,5 +1,5 @@
 // Tests for server setup (no port binding)
-import { createServer } from '../src/server';
+import { createServer, findAvailablePort } from '../src/server';
 import { AdapterConfig } from '../src/types/config';
 
 // Mock logger
@@ -63,48 +63,49 @@ describe('Server', () => {
             expect(response.statusCode).toBe(400);
         });
 
-        it('should handle OPTIONS for CORS', async () => {
+        it('should not expose wildcard CORS', async () => {
             const server = createServer(testConfig);
-            const response = await server.app.inject({
-                method: 'OPTIONS',
-                url: '/v1/messages',
-            });
+            const response = await server.app.inject({ method: 'GET', url: '/health' });
 
-            expect(response.statusCode).toBe(200);
-            expect(response.headers['access-control-allow-origin']).toBe('*');
-            expect(response.headers['access-control-allow-methods']).toContain('POST');
+            expect(response.headers['access-control-allow-origin']).toBeUndefined();
         });
 
-        it('should set CORS headers on GET', async () => {
-            const server = createServer(testConfig);
-            const response = await server.app.inject({
-                method: 'GET',
-                url: '/health',
-            });
-
-            expect(response.headers['access-control-allow-origin']).toBe('*');
-        });
-
-        it('should set CORS headers on POST', async () => {
-            const server = createServer(testConfig);
-            const response = await server.app.inject({
+        it('should enforce process-local bearer authentication when configured', async () => {
+            const server = createServer({ ...testConfig, localAuthToken: 'local-secret' });
+            const unauthorized = await server.app.inject({
                 method: 'POST',
                 url: '/v1/messages',
                 payload: {},
             });
-
-            expect(response.headers['access-control-allow-origin']).toBe('*');
-        });
-
-        it('should include all CORS headers', async () => {
-            const server = createServer(testConfig);
-            const response = await server.app.inject({
-                method: 'OPTIONS',
+            const authorized = await server.app.inject({
+                method: 'POST',
                 url: '/v1/messages',
+                headers: { authorization: 'Bearer local-secret' },
+                payload: {},
             });
 
-            expect(response.headers['access-control-allow-headers']).toContain('Content-Type');
-            expect(response.headers['access-control-allow-headers']).toContain('Authorization');
+            expect(unauthorized.statusCode).toBe(401);
+            expect(authorized.statusCode).toBe(400);
+        });
+
+        it('should leave the health check available without credentials', async () => {
+            const server = createServer({ ...testConfig, localAuthToken: 'local-secret' });
+            const response = await server.app.inject({ method: 'GET', url: '/health' });
+
+            expect(response.statusCode).toBe(200);
+        });
+
+        it('should bind only to loopback', async () => {
+            const server = createServer(testConfig);
+            const port = await findAvailablePort(0);
+            try {
+                const url = await server.start(port);
+                const address = server.app.server.address();
+                expect(url).toBe(`http://127.0.0.1:${port}`);
+                expect(typeof address === 'object' && address?.address).toBe('127.0.0.1');
+            } finally {
+                await server.stop();
+            }
         });
     });
 });

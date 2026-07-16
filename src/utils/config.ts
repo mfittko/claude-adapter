@@ -7,6 +7,14 @@ import { AdapterConfig, ClaudeJson, ClaudeSettings } from '../types/config';
 const CONFIG_DIR = path.join(os.homedir(), '.claude-adapter');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
+function writeSecureJson(filePath: string, value: unknown): void {
+    fs.writeFileSync(filePath, JSON.stringify(value, null, 2), {
+        encoding: 'utf-8',
+        mode: 0o600,
+    });
+    fs.chmodSync(filePath, 0o600);
+}
+
 /**
  * Load configuration from ~/.claude-adapter/config.json
  */
@@ -17,7 +25,7 @@ export function loadConfig(): AdapterConfig | null {
         }
         const content = fs.readFileSync(CONFIG_FILE, 'utf-8');
         return JSON.parse(content) as AdapterConfig;
-    } catch (error) {
+    } catch {
         return null;
     }
 }
@@ -31,7 +39,7 @@ export function saveConfig(config: AdapterConfig): void {
         fs.mkdirSync(CONFIG_DIR, { recursive: true });
     }
 
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    writeSecureJson(CONFIG_FILE, config);
 }
 
 /**
@@ -65,12 +73,11 @@ export function updateClaudeJson(): void {
             claudeJson = JSON.parse(content);
         }
     } catch {
-        // Start fresh if file is corrupted
-        claudeJson = {};
+        throw new Error(`Refusing to overwrite invalid JSON in ${CLAUDE_JSON_PATH}`);
     }
 
     claudeJson.hasCompletedOnboarding = true;
-    fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(claudeJson, null, 2), 'utf-8');
+    writeSecureJson(CLAUDE_JSON_PATH, claudeJson);
 }
 
 /**
@@ -93,8 +100,7 @@ export function updateClaudeSettings(
             settings = JSON.parse(content);
         }
     } catch {
-        // Start fresh if file is corrupted
-        settings = {};
+        throw new Error(`Refusing to overwrite invalid JSON in ${CLAUDE_SETTINGS_PATH}`);
     }
 
     // Merge env settings
@@ -107,7 +113,7 @@ export function updateClaudeSettings(
         ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haiku,
     };
 
-    fs.writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+    writeSecureJson(CLAUDE_SETTINGS_PATH, settings);
 }
 
 /**

@@ -1,5 +1,6 @@
 // Fastify proxy server setup
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { timingSafeEqual } from 'crypto';
 import { AdapterConfig } from '../types/config';
 import { createMessagesHandler } from './handlers';
 import { logger } from '../utils/logger';
@@ -19,20 +20,28 @@ const DEFAULT_SHUTDOWN_TIMEOUT = 10000;
 export function createServer(config: AdapterConfig): ProxyServer {
     const app = Fastify({ logger: false });
 
-    // CORS headers for local development
-    app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.header('Access-Control-Allow-Origin', '*');
-        reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, anthropic-version, x-api-key');
-
-        if (request.method === 'OPTIONS') {
-            reply.code(200).send();
-            return;
-        }
-    });
+    if (config.localAuthToken) {
+        app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+            if (request.url === '/health') return;
+            const authorization = request.headers.authorization;
+            const supplied = authorization?.startsWith('Bearer ')
+                ? authorization.slice('Bearer '.length)
+                : request.headers['x-api-key'];
+            const expected = Buffer.from(config.localAuthToken!);
+            const actual = Buffer.from(typeof supplied === 'string' ? supplied : '');
+            if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+                reply.code(401).send({
+                    error: {
+                        type: 'authentication_error',
+                        message: 'Invalid local proxy authentication token',
+                    },
+                });
+            }
+        });
+    }
 
     // Health check endpoint
-    app.get('/health', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.get('/health', async (_request: FastifyRequest, _reply: FastifyReply) => {
         return { status: 'ok', adapter: 'claude-adapter' };
     });
 
@@ -43,8 +52,8 @@ export function createServer(config: AdapterConfig): ProxyServer {
         app,
         start: async (port: number): Promise<string> => {
             try {
-                await app.listen({ port, host: '0.0.0.0' });
-                const url = `http://localhost:${port}`;
+                await app.listen({ port, host: '127.0.0.1' });
+                const url = `http://127.0.0.1:${port}`;
                 return url;
             } catch (err: any) {
                 if (err.code === 'EADDRINUSE') {
@@ -55,19 +64,20 @@ export function createServer(config: AdapterConfig): ProxyServer {
         },
         stop: async (timeout: number = DEFAULT_SHUTDOWN_TIMEOUT): Promise<void> => {
 
-            // Create a timeout promise for force shutdown
+            let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
             const forceShutdown = new Promise<void>((resolve) => {
-                setTimeout(() => {
-                    logger.warn('Graceful shutdown timeout exceeded, forcing close');
+                timeoutHandle = setTimeout(() => {
+                    logger.warn('Graceful shutdown timeout exceeded, closing active connections');
+                    app.server.closeAllConnections?.();
                     resolve();
                 }, timeout);
             });
 
-            // Race between graceful close and timeout
-            await Promise.race([
-                app.close(),
-                forceShutdown,
-            ]);
+            try {
+                await Promise.race([app.close(), forceShutdown]);
+            } finally {
+                if (timeoutHandle) clearTimeout(timeoutHandle);
+            }
         },
     };
 }
@@ -81,7 +91,7 @@ export async function findAvailablePort(preferredPort: number): Promise<number> 
     return new Promise((resolve) => {
         const server = net.createServer();
 
-        server.listen(preferredPort, () => {
+        server.listen(preferredPort, '127.0.0.1', () => {
             const address = server.address();
             const port = typeof address === 'object' && address ? address.port : preferredPort;
             server.close(() => resolve(port));

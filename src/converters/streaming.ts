@@ -1,11 +1,11 @@
 // Streaming converter: OpenAI SSE → Anthropic SSE
 import { FastifyReply } from 'fastify';
 import { Stream } from 'openai/streaming';
-import { AnthropicMessageResponse, AnthropicUsage } from '../types/anthropic';
 import { OpenAIStreamChunk, OpenAIStreamToolCall } from '../types/openai';
 import { generateToolUseId } from './tools';
 import { recordUsage } from '../utils/tokenUsage';
 import { recordError } from '../utils/errorLog';
+import { isMakoraOnsetCollapse } from '../makora';
 
 // Global counter and set for unique tool IDs within this process
 let toolIdCounter = 0;
@@ -55,6 +55,9 @@ interface StreamingState {
   hasStarted: boolean;
   textContent: string;
   textBlockOpen: boolean;
+  thinkingBlockOpen: boolean;
+  reasoningOnset: string;
+  guardNanCollapse: boolean;
 }
 
 /**
@@ -64,7 +67,8 @@ export async function streamOpenAIToAnthropic(
   openaiStream: Stream<OpenAIStreamChunk>,
   reply: FastifyReply,
   originalModel: string,
-  provider: string = ''
+  provider: string = '',
+  guardNanCollapse = false
 ): Promise<void> {
   const state: StreamingState = {
     messageId: `msg_${Date.now().toString(36)}`,
@@ -79,6 +83,9 @@ export async function streamOpenAIToAnthropic(
     hasStarted: false,
     textContent: '',
     textBlockOpen: false,
+    thinkingBlockOpen: false,
+    reasoningOnset: '',
+    guardNanCollapse,
   };
 
   // Access the underlying Node.js response for SSE streaming
@@ -126,8 +133,45 @@ function processChunk(chunk: OpenAIStreamChunk, state: StreamingState, raw: any)
 
   const delta = choice.delta;
 
+  const reasoning = delta.reasoning ?? delta.reasoning_content;
+  if (reasoning) {
+    let reasoningToSend = reasoning;
+    if (state.guardNanCollapse) {
+      state.reasoningOnset = (state.reasoningOnset + reasoning).slice(0, 64);
+      if (state.reasoningOnset.length < 40) {
+        reasoningToSend = '';
+      } else {
+        if (isMakoraOnsetCollapse(state.reasoningOnset)) {
+          throw new Error(
+            'Makora GLM inference failed: detected NaN-collapse at reasoning onset. Retry with a shorter context.'
+          );
+        }
+        reasoningToSend = state.reasoningOnset;
+        state.guardNanCollapse = false;
+      }
+    }
+    if (reasoningToSend) {
+      if (state.textBlockOpen) {
+        sendContentBlockStop(state.contentBlockIndex, raw);
+        state.textBlockOpen = false;
+        state.contentBlockIndex++;
+      }
+      if (!state.thinkingBlockOpen) {
+        sendContentBlockStart(state.contentBlockIndex, 'thinking', '', raw);
+        state.thinkingBlockOpen = true;
+      }
+      sendThinkingDelta(state.contentBlockIndex, reasoningToSend, raw);
+    }
+  }
+
   // Handle text content
   if (delta.content) {
+    flushGuardedReasoning(state, raw);
+    if (state.thinkingBlockOpen) {
+      sendContentBlockStop(state.contentBlockIndex, raw);
+      state.thinkingBlockOpen = false;
+      state.contentBlockIndex++;
+    }
     if (!state.textBlockOpen) {
       sendContentBlockStart(state.contentBlockIndex, 'text', '', raw);
       state.textBlockOpen = true;
@@ -146,6 +190,12 @@ function processChunk(chunk: OpenAIStreamChunk, state: StreamingState, raw: any)
 
   // Handle finish reason
   if (choice.finish_reason) {
+    flushGuardedReasoning(state, raw);
+    if (state.thinkingBlockOpen) {
+      sendContentBlockStop(state.contentBlockIndex, raw);
+      state.thinkingBlockOpen = false;
+      state.contentBlockIndex++;
+    }
     if (state.textBlockOpen) {
       sendContentBlockStop(state.contentBlockIndex, raw);
       state.textBlockOpen = false;
@@ -154,9 +204,21 @@ function processChunk(chunk: OpenAIStreamChunk, state: StreamingState, raw: any)
     }
 
     for (const toolCall of state.currentToolCalls.values()) {
+      if (!toolCall.arguments.trim()) {
+        toolCall.arguments = '{}';
+        sendInputJsonDelta(toolCall.blockIndex, '{}', raw);
+      }
       sendContentBlockStop(toolCall.blockIndex, raw);
     }
   }
+}
+
+function flushGuardedReasoning(state: StreamingState, raw: any): void {
+  if (!state.guardNanCollapse || !state.reasoningOnset) return;
+  sendContentBlockStart(state.contentBlockIndex, 'thinking', '', raw);
+  sendThinkingDelta(state.contentBlockIndex, state.reasoningOnset, raw);
+  state.thinkingBlockOpen = true;
+  state.guardNanCollapse = false;
 }
 
 function processToolCallDelta(
@@ -168,6 +230,12 @@ function processToolCallDelta(
 
   // Check if this is a new tool call
   if (!state.currentToolCalls.has(index)) {
+    flushGuardedReasoning(state, raw);
+    if (state.thinkingBlockOpen) {
+      sendContentBlockStop(state.contentBlockIndex, raw);
+      state.thinkingBlockOpen = false;
+      state.contentBlockIndex++;
+    }
     if (state.textBlockOpen) {
       sendContentBlockStop(state.contentBlockIndex, raw);
       state.textBlockOpen = false;
@@ -234,7 +302,7 @@ function sendMessageStart(state: StreamingState, raw: any): void {
 
 function sendContentBlockStart(
   index: number,
-  type: 'text' | 'tool_use',
+  type: 'text' | 'thinking' | 'tool_use',
   textOrName: string,
   raw: any,
   id?: string
@@ -243,6 +311,8 @@ function sendContentBlockStart(
 
   if (type === 'text') {
     contentBlock = { type: 'text', text: '' };
+  } else if (type === 'thinking') {
+    contentBlock = { type: 'thinking', thinking: '', signature: '' };
   } else {
     contentBlock = {
       type: 'tool_use',
@@ -267,6 +337,18 @@ function sendTextDelta(index: number, text: string, raw: any): void {
     delta: {
       type: 'text_delta',
       text,
+    },
+  };
+  sendSSE(event, raw);
+}
+
+function sendThinkingDelta(index: number, thinking: string, raw: any): void {
+  const event = {
+    type: 'content_block_delta',
+    index,
+    delta: {
+      type: 'thinking_delta',
+      thinking,
     },
   };
   sendSSE(event, raw);

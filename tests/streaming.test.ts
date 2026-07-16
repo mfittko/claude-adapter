@@ -1,6 +1,4 @@
 // Tests for streaming converter functions
-import { EventEmitter } from 'events';
-
 // Mock tokenUsage to prevent tests from writing to real files
 jest.mock('../src/utils/tokenUsage', () => ({
   recordUsage: jest.fn(),
@@ -580,6 +578,46 @@ describe('Streaming Converter', () => {
           model: 'gpt-4-0613',
         })
       );
+    });
+
+    it('streams reasoning_content as an Anthropic thinking block', async () => {
+      const mockRaw = new MockRawResponse();
+      const stream = createMockStream([
+        { choices: [{ delta: { reasoning_content: 'reasoning trace' }, finish_reason: null }] },
+        { choices: [{ delta: { content: 'answer' }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      ]);
+
+      await streamOpenAIToAnthropic(stream as any, { raw: mockRaw } as any, 'makora');
+      const events = mockRaw.getEvents();
+      expect(events.find(e => e.data.content_block?.type === 'thinking')).toBeDefined();
+      expect(events.find(e => e.data.delta?.type === 'thinking_delta')?.data.delta.thinking)
+        .toBe('reasoning trace');
+    });
+
+    it('surfaces GLM onset collapse as an Anthropic stream error', async () => {
+      const mockRaw = new MockRawResponse();
+      const stream = createMockStream([
+        { choices: [{ delta: { reasoning: '!'.repeat(40) }, finish_reason: null }] },
+      ]);
+
+      await streamOpenAIToAnthropic(stream as any, { raw: mockRaw } as any, 'glm', 'makora', true);
+      const events = mockRaw.getEvents();
+      const error = events.find(e => e.data.type === 'error');
+      expect(error?.data.error.message).toContain('NaN-collapse');
+      expect(events.find(e => e.data.delta?.type === 'thinking_delta')).toBeUndefined();
+    });
+
+    it('normalizes empty streamed tool arguments to {}', async () => {
+      const mockRaw = new MockRawResponse();
+      const stream = createMockStream([
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'empty', function: { name: 'noop' } }] }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ]);
+
+      await streamOpenAIToAnthropic(stream as any, { raw: mockRaw } as any, 'makora');
+      const jsonDelta = mockRaw.getEvents().find(e => e.data.delta?.type === 'input_json_delta');
+      expect(jsonDelta?.data.delta.partial_json).toBe('{}');
     });
   });
 });

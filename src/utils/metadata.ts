@@ -56,7 +56,7 @@ function loadMetadata(): Metadata | null {
             cachedMetadata = JSON.parse(data);
             return cachedMetadata;
         }
-    } catch (e) {
+    } catch {
         // Ignore read errors
     }
     return null;

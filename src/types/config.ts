@@ -6,6 +6,9 @@ export interface AdapterConfig {
     models: ModelConfig;
     toolFormat?: 'native' | 'xml';  // Default: 'native'
     port?: number;
+    mode?: 'generic' | 'makora';
+    /** Process-local credential required by the loopback proxy. */
+    localAuthToken?: string;
 }
 
 export interface ModelConfig {
