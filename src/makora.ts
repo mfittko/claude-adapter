@@ -10,15 +10,38 @@ export interface MakoraModelPolicy {
     maxTokensField: 'max_completion_tokens';
     assistantReasoningField?: 'reasoning_content';
     guardedForNanCollapse?: boolean;
+    contextWindow?: number;
+    claudeOneMillionContext?: boolean;
 }
 
 const LLAMA_OVERRIDE = 'amd/Llama-3.3-70B-Instruct-FP8-KV';
 const LLAMA_OVERRIDE_URL = 'https://inference.makora.com/llama3-3-70b-instruct-fp8/v1';
 
+/** Context windows mirrored from pi-makora-provider/models.json. */
+export const MAKORA_MODEL_FACTS: Readonly<Record<string, {
+    contextWindow: number;
+    claudeOneMillionContext?: true;
+}>> = Object.freeze({
+    'deepseek-ai/deepseek-v4-flash': { contextWindow: 1048576, claudeOneMillionContext: true },
+    'deepseek-ai/deepseek-v4-pro': { contextWindow: 1048576, claudeOneMillionContext: true },
+    'google/gemma-4-26b-a4b': { contextWindow: 262144 },
+    'meta-llama/llama-3.3-70b-instruct': { contextWindow: 131072 },
+    'moonshotai/kimi-k2.7-code': { contextWindow: 262144 },
+    'openai/gpt-oss-120b': { contextWindow: 131072 },
+    'unsloth/qwen3.6-27b-nvfp4': { contextWindow: 262144 },
+    'unsloth/qwen3.6-35b-a3b-nvfp4': { contextWindow: 262144 },
+    'zai-org/glm-5.2-fp8': { contextWindow: 980000, claudeOneMillionContext: true },
+    'zai-org/glm-5.2-nvfp4': { contextWindow: 1048576, claudeOneMillionContext: true },
+});
+
 /** Resolve Makora compatibility by model family. Unknown models stay usable. */
 export function getMakoraModelPolicy(model: string): MakoraModelPolicy {
     const normalized = model.toLowerCase();
-    const base = { maxTokensField: 'max_completion_tokens' as const };
+    const modelFacts = MAKORA_MODEL_FACTS[normalized];
+    const base = {
+        maxTokensField: 'max_completion_tokens' as const,
+        ...(modelFacts ?? {}),
+    };
 
     if (normalized.includes('deepseek')) {
         return {

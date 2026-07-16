@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto';
 import { spawn } from 'child_process';
 import { AdapterConfig, ModelConfig } from './types/config';
 import { createServer, findAvailablePort } from './server';
-import { DEFAULT_MAKORA_MODEL, MAKORA_BASE_URL } from './makora';
+import { DEFAULT_MAKORA_MODEL, getMakoraModelPolicy, MAKORA_BASE_URL } from './makora';
 
 export interface MakoraLaunchOptions {
     port: number;
@@ -28,6 +28,12 @@ export function createMakoraConfig(
     };
 }
 
+function claudeModelAlias(model: string, oneMillionEligible: boolean): string {
+    return oneMillionEligible && getMakoraModelPolicy(model).claudeOneMillionContext
+        ? `${model}[1m]`
+        : model;
+}
+
 export function buildMakoraChildEnv(
     proxyUrl: string,
     localAuthToken: string,
@@ -41,8 +47,8 @@ export function buildMakoraChildEnv(
         ...childEnv,
         ANTHROPIC_BASE_URL: proxyUrl,
         ANTHROPIC_AUTH_TOKEN: localAuthToken,
-        ANTHROPIC_DEFAULT_OPUS_MODEL: models.opus,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnet,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: claudeModelAlias(models.opus, true),
+        ANTHROPIC_DEFAULT_SONNET_MODEL: claudeModelAlias(models.sonnet, true),
         ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haiku,
         CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',

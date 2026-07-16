@@ -116,4 +116,43 @@ describe('Makora compatibility', () => {
         expect(env.ENABLE_TOOL_SEARCH).toBe('false');
         expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1');
     });
+
+    it('advertises one-million-token context only for supported Opus and Sonnet aliases', () => {
+        const glm = buildMakoraChildEnv('http://127.0.0.1:3080', 'local-key', {
+            opus: 'zai-org/GLM-5.2-FP8',
+            sonnet: 'zai-org/GLM-5.2-NVFP4',
+            haiku: 'zai-org/GLM-5.2-FP8',
+        }, {});
+        expect(glm.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('zai-org/GLM-5.2-FP8[1m]');
+        expect(glm.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('zai-org/GLM-5.2-NVFP4[1m]');
+        expect(glm.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('zai-org/GLM-5.2-FP8');
+
+        const deepSeek = buildMakoraChildEnv('http://127.0.0.1:3080', 'local-key', {
+            opus: 'deepseek-ai/DeepSeek-V4-Flash',
+            sonnet: 'deepseek-ai/DeepSeek-V4-Pro',
+            haiku: 'moonshotai/Kimi-K2.7-Code',
+        }, {});
+        expect(deepSeek.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('deepseek-ai/DeepSeek-V4-Flash[1m]');
+        expect(deepSeek.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('deepseek-ai/DeepSeek-V4-Pro[1m]');
+        expect(deepSeek.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('moonshotai/Kimi-K2.7-Code');
+    });
+
+    it('keeps normal Claude budgeting for 131k and 262k Makora models', () => {
+        const env = buildMakoraChildEnv('http://127.0.0.1:3080', 'local-key', {
+            opus: 'meta-llama/Llama-3.3-70B-Instruct',
+            sonnet: 'unsloth/Qwen3.6-27B-NVFP4',
+            haiku: 'google/gemma-4-26B-A4B',
+        }, {});
+        expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('meta-llama/Llama-3.3-70B-Instruct');
+        expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('unsloth/Qwen3.6-27B-NVFP4');
+        expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('google/gemma-4-26B-A4B');
+    });
+
+    it('carries explicit context-window facts for Makora models', () => {
+        expect(getMakoraModelPolicy('deepseek-ai/DeepSeek-V4-Flash').contextWindow).toBe(1048576);
+        expect(getMakoraModelPolicy('deepseek-ai/DeepSeek-V4-Pro').contextWindow).toBe(1048576);
+        expect(getMakoraModelPolicy('zai-org/GLM-5.2-FP8').contextWindow).toBe(980000);
+        expect(getMakoraModelPolicy('zai-org/GLM-5.2-NVFP4').contextWindow).toBe(1048576);
+        expect(getMakoraModelPolicy('moonshotai/Kimi-K2.7-Code').contextWindow).toBe(262144);
+    });
 });

@@ -81,7 +81,14 @@ claude-adapter --makora --model zai-org/GLM-5.2-FP8 -- [claude arguments]
 ```
 
 `--model` sets all three Claude aliases. Override tiers with `--opus-model`,
-`--sonnet-model`, or `--haiku-model`. The preset uses
+`--sonnet-model`, or `--haiku-model`. For Makora models with an approximately
+one-million-token context window (DeepSeek V4 Flash/Pro and GLM 5.2
+FP8/NVFP4), the wrapper adds Claude Code's documented `[1m]` marker only to
+the Opus and Sonnet aliases. Claude removes the marker before proxy requests,
+so Makora receives the original model ID. Start a new Claude session after
+changing aliases; 131k/262k models and Haiku keep normal context budgeting.
+
+The preset uses
 `https://inference.makora.com/v1`; the known Llama 3.3 FP8 model automatically
 uses its per-model endpoint. Supported compatibility includes GLM 5.2, Qwen
 3.6, DeepSeek V4, and Kimi K2.7 reasoning controls/history, Kimi's
